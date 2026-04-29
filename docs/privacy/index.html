@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SkyGlance Privacy Policy</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --background: #f6f8fb;
+      --text: #172033;
+      --muted: #5f6f86;
+      --card: #ffffff;
+      --border: #dce4ef;
+      --accent: #0a66c2;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --background: #0f1724;
+        --text: #eff5ff;
+        --muted: #a8b5c8;
+        --card: #162233;
+        --border: #26364c;
+        --accent: #78b7ff;
+      }
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--background);
+      color: var(--text);
+      line-height: 1.6;
+    }
+
+    main {
+      width: min(860px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 56px 0 80px;
+    }
+
+    article {
+      border: 1px solid var(--border);
+      border-radius: 24px;
+      background: var(--card);
+      padding: clamp(24px, 5vw, 48px);
+      box-shadow: 0 20px 70px rgba(10, 31, 68, 0.12);
+    }
+
+    h1 {
+      margin: 0 0 6px;
+      font-size: clamp(2rem, 7vw, 4rem);
+      line-height: 1;
+      letter-spacing: -0.05em;
+    }
+
+    h2 {
+      margin-top: 32px;
+    }
+
+    p,
+    li {
+      color: var(--muted);
+      font-size: 1.02rem;
+    }
+
+    a {
+      color: var(--accent);
+      font-weight: 700;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <article>
+      <h1>SkyGlance Privacy Policy</h1>
+      <p>Effective date: April 29, 2026</p>
+
+      <p>
+        SkyGlance is designed to show local weather forecasts, widgets, and trial
+        status without advertising or cross-app tracking.
+      </p>
+
+      <h2>Information The App Uses</h2>
+      <p>
+        SkyGlance may use your device location when you grant location permission.
+        Your latitude and longitude are sent to Open-Meteo to retrieve weather
+        forecasts for your area. Location is used only to provide app
+        functionality, such as current conditions, forecasts, and widgets.
+      </p>
+      <p>
+        SkyGlance uses Apple StoreKit for purchases. Purchase processing is
+        handled by Apple. The app stores entitlement and trial state locally on
+        your device using system storage such as UserDefaults and Keychain.
+      </p>
+      <p>
+        SkyGlance may request notification permission to send a local reminder
+        before a trial ends. Trial reminders are scheduled on your device.
+      </p>
+      <p>
+        SkyGlance stores recent weather and location information locally so
+        widgets can display current weather. This local widget data is not used
+        for advertising or tracking.
+      </p>
+
+      <h2>What We Do Not Do</h2>
+      <ul>
+        <li>SkyGlance does not sell your data.</li>
+        <li>SkyGlance does not use third-party advertising SDKs.</li>
+        <li>SkyGlance does not track you across apps or websites.</li>
+        <li>SkyGlance does not collect analytics for marketing or profiling.</li>
+      </ul>
+
+      <h2>Third-Party Services</h2>
+      <p>
+        SkyGlance uses Open-Meteo to provide weather data. Requests to Open-Meteo
+        may include your approximate or precise coordinates so the service can
+        return a local forecast.
+      </p>
+
+      <h2>Contact</h2>
+      <p>
+        For privacy questions or support, open an issue at
+        <a href="https://github.com/casstao1/weatherGlance/issues">github.com/casstao1/weatherGlance/issues</a>.
+      </p>
+    </article>
+  </main>
+</body>
+</html>
