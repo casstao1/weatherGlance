@@ -1,0 +1,36 @@
+{
+  "identifier" : "7D7D235E-0B09-4B4A-8F35-8F6A15E0C7A6",
+  "nonRenewingSubscriptions" : [
+
+  ],
+  "products" : [
+    {
+      "displayPrice" : "7.99",
+      "familyShareable" : false,
+      "internalID" : "SKYGLANCE_LIFETIME",
+      "localizations" : [
+        {
+          "description" : "A one-time unlock for SkyGlance widgets and weather details.",
+          "displayName" : "SkyGlance Lifetime",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "com.castao.weatherGlance.lifetime",
+      "referenceName" : "SkyGlance Lifetime",
+      "type" : "NonConsumable"
+    }
+  ],
+  "settings" : {
+    "_failTransactionsEnabled" : false,
+    "_locale" : "en_US",
+    "_storefront" : "USA"
+  },
+  "subscriptionGroups" : [
+
+  ],
+  "type" : "local",
+  "version" : {
+    "major" : 3,
+    "minor" : 0
+  }
+}
