@@ -22,11 +22,14 @@ final class WeatherService: ObservableObject {
     private let openMeteoService = OpenMeteoService()
     private let mapper = TimelineMapper()
     private let calendar = Calendar.autoupdatingCurrent
+    private let dashboardSnapshotStaleInterval: TimeInterval = 15 * 60
     private var refreshGeneration = 0
     private var lastRefreshFingerprint: RefreshFingerprint?
+    private var dashboardSnapshotPublishedAt: Date?
 
     @Published var latestEntry: GlanceWidgetEntry = .placeholder
     @Published var dashboardSnapshot: AppWeatherSnapshot = .placeholder
+    @Published private(set) var hasLoadedDashboardSnapshot = false
 
     private var shouldAttemptWeatherKit: Bool {
         let processInfo = ProcessInfo.processInfo
@@ -118,7 +121,7 @@ final class WeatherService: ObservableObject {
         guard EntitlementStore.hasProAccess else { return }
 
         let resolvedCityName = cityName?.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !force, shouldSkipRefresh(for: location, cityName: resolvedCityName) {
+        if !force, hasLoadedDashboardSnapshot, shouldSkipRefresh(for: location, cityName: resolvedCityName) {
             return
         }
 
@@ -144,7 +147,7 @@ final class WeatherService: ObservableObject {
                 }
                 SharedLocationStore.save(entries: timeline)
                 WidgetCenter.shared.reloadAllTimelines()
-                dashboardSnapshot = makeDashboardSnapshot(from: weather, cityName: displayCityName)
+                publishDashboardSnapshot(makeDashboardSnapshot(from: weather, cityName: displayCityName))
                 return
             } catch {
                 print("[WeatherService] WeatherKit failed; using Open-Meteo fallback: \(error)")
@@ -160,7 +163,7 @@ final class WeatherService: ObservableObject {
             }
             SharedLocationStore.save(entries: fallback.entries)
             WidgetCenter.shared.reloadAllTimelines()
-            dashboardSnapshot = fallback.snapshot
+            publishDashboardSnapshot(fallback.snapshot)
         } catch {
             guard generation == refreshGeneration else { return }
             print("[WeatherService] Open-Meteo failed: \(error)")
@@ -186,6 +189,24 @@ final class WeatherService: ObservableObject {
         )
 
         dashboardSnapshot = dashboardSnapshot.replacing(cityName: cityName)
+    }
+
+    func prepareForDashboardRefreshIfStale() {
+        guard hasLoadedDashboardSnapshot else { return }
+        guard let dashboardSnapshotPublishedAt else {
+            hasLoadedDashboardSnapshot = false
+            return
+        }
+
+        if Date().timeIntervalSince(dashboardSnapshotPublishedAt) > dashboardSnapshotStaleInterval {
+            hasLoadedDashboardSnapshot = false
+        }
+    }
+
+    private func publishDashboardSnapshot(_ snapshot: AppWeatherSnapshot) {
+        dashboardSnapshot = snapshot
+        dashboardSnapshotPublishedAt = Date()
+        hasLoadedDashboardSnapshot = true
     }
 
     private func fetchWeatherKitForecast(for location: CLLocation) async throws -> Weather {
@@ -340,7 +361,7 @@ final class WeatherService: ObservableObject {
         let startOfHour = calendar.date(bySetting: .minute, value: 0, of: now) ?? now
         let upcomingHours = weather.hourlyForecast
             .filter { $0.date > startOfHour }
-            .prefix(7)
+            .prefix(23)
 
         let current = AppHourlyForecast(
             timeLabel: "Now",

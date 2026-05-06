@@ -28,11 +28,18 @@ struct ContentView: View {
             }
         }
         .sheet(isPresented: $showSettings) {
-            SettingsView(purchaseManager: purchaseManager) {
-                purchaseManager.refreshAccessState()
-                updateTrialSchedules()
-                WidgetCenter.shared.reloadAllTimelines()
-            }
+            SettingsView(
+                purchaseManager: purchaseManager,
+                locationManager: locationManager,
+                onEntitlementsChanged: {
+                    purchaseManager.refreshAccessState()
+                    updateTrialSchedules()
+                    WidgetCenter.shared.reloadAllTimelines()
+                },
+                onWeatherLocationChanged: {
+                    refreshCurrentLocation()
+                }
+            )
                 .presentationDetents([.medium, .large])
                 .presentationCornerRadius(24)
         }
@@ -53,6 +60,7 @@ struct ContentView: View {
                     return
                 }
 
+                service.prepareForDashboardRefreshIfStale()
                 startWeatherUpdates(forceRefreshExistingLocation: true)
             }
         }
@@ -95,17 +103,23 @@ struct ContentView: View {
         }
     }
 
+    @ViewBuilder
     private var dashboardView: some View {
-        let snapshot = service.dashboardSnapshot
         let theme = GlanceThemeResolver.widgetGlassTheme(colorScheme: .dark)
 
-        return AppDashboardView(
-            snapshot: snapshot,
-            theme: theme,
-            useCelsius: useCelsius,
-            showFeelsLikeTemperatures: showFeelsLikeTemperatures,
-            onSettingsTapped: { showSettings = true }
-        )
+        if service.hasLoadedDashboardSnapshot {
+            AppDashboardView(
+                snapshot: service.dashboardSnapshot,
+                theme: theme,
+                useCelsius: useCelsius,
+                showFeelsLikeTemperatures: showFeelsLikeTemperatures,
+                onSettingsTapped: { showSettings = true }
+            )
+            .transition(.opacity)
+        } else {
+            SkyGlanceLoadingView()
+                .transition(.opacity)
+        }
     }
 
     private func refreshCurrentLocation() {
@@ -217,12 +231,65 @@ struct ContentView: View {
     }
 }
 
+private struct SkyGlanceLoadingView: View {
+    @State private var isAnimating = false
+
+    var body: some View {
+        ZStack {
+            loadingBackground.ignoresSafeArea()
+
+            Image(systemName: "cloud.sun.fill")
+                .font(.system(size: 76, weight: .semibold))
+                .symbolRenderingMode(.hierarchical)
+                .foregroundStyle(.white)
+                .shadow(color: .black.opacity(0.18), radius: 22, x: 0, y: 12)
+                .scaleEffect(isAnimating ? 1.03 : 0.97)
+                .opacity(isAnimating ? 1.0 : 0.86)
+                .animation(
+                    .easeInOut(duration: 1.35).repeatForever(autoreverses: true),
+                    value: isAnimating
+                )
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .onAppear {
+            isAnimating = true
+        }
+    }
+
+    private var loadingBackground: some View {
+        ZStack {
+            LinearGradient(
+                colors: [
+                    Color(red: 0.11, green: 0.24, blue: 0.43),
+                    Color(red: 0.18, green: 0.42, blue: 0.68),
+                    Color(red: 0.09, green: 0.18, blue: 0.32),
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            RadialGradient(
+                colors: [Color.white.opacity(0.22), Color.clear],
+                center: .topLeading,
+                startRadius: 0,
+                endRadius: 420
+            )
+            RadialGradient(
+                colors: [Color(red: 0.48, green: 0.76, blue: 1.0).opacity(0.24), Color.clear],
+                center: .bottomTrailing,
+                startRadius: 20,
+                endRadius: 340
+            )
+        }
+    }
+}
+
 // MARK: – Lightweight Location Manager
 
 @MainActor
 final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     @Published var location: CLLocation?
     @Published var cityName: String?
+    @Published var isUsingManualLocation: Bool
     @Published var authorizationStatus: CLAuthorizationStatus
 
     private let manager = CLLocationManager()
@@ -234,6 +301,7 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
 
     override init() {
         authorizationStatus = manager.authorizationStatus
+        isUsingManualLocation = SharedLocationStore.isManualLocationEnabled
         super.init()
         manager.delegate = self
         manager.desiredAccuracy = kCLLocationAccuracyNearestTenMeters
@@ -244,6 +312,17 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
 
     func begin() {
         authorizationStatus = manager.authorizationStatus
+        isUsingManualLocation = SharedLocationStore.isManualLocationEnabled
+
+        if isUsingManualLocation {
+            if restoreManualLocationIfAvailable() != nil {
+                stopUpdatingLocation()
+                return
+            }
+
+            isUsingManualLocation = false
+            SharedLocationStore.clearManualLocation()
+        }
 
         switch authorizationStatus {
         case .authorizedAlways, .authorizedWhenInUse:
@@ -260,7 +339,11 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
 
     @discardableResult
     func restoreCachedLocationIfAvailable() -> (location: CLLocation, cityName: String?)? {
-        guard location == nil, let cached = SharedLocationStore.load() else {
+        if let manualLocation = restoreManualLocationIfAvailable() {
+            return manualLocation
+        }
+
+        guard location == nil, let cached = SharedLocationStore.loadDeviceLocation() else {
             return nil
         }
 
@@ -269,9 +352,42 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
         return cached
     }
 
+    @discardableResult
+    func restoreManualLocationIfAvailable() -> (location: CLLocation, cityName: String?)? {
+        guard let cached = SharedLocationStore.loadManualLocation() else {
+            return nil
+        }
+
+        isUsingManualLocation = true
+        cityName = cached.cityName
+        location = cached.location
+        return cached
+    }
+
+    func useManualLocation(_ newLocation: CLLocation, cityName newCityName: String?) {
+        stopUpdatingLocation()
+        isUsingManualLocation = true
+        cityName = newCityName
+        location = newLocation
+        SharedLocationStore.save(location: newLocation, cityName: newCityName, isManual: true)
+        reloadWidgetsIfNeeded(force: true)
+    }
+
+    func useCurrentLocation() {
+        isUsingManualLocation = false
+        cityName = nil
+        SharedLocationStore.clearManualLocation()
+        begin()
+    }
+
     nonisolated func locationManager(_ manager: CLLocationManager,
                                      didUpdateLocations locations: [CLLocation]) {
         Task { @MainActor in
+            guard !isUsingManualLocation else {
+                stopUpdatingLocation()
+                return
+            }
+
             let freshLocations = locations
                 .filter { candidate in
                     candidate.horizontalAccuracy >= 0 &&

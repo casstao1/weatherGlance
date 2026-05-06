@@ -22,13 +22,31 @@ struct GlanceHomeSmallEntryView: View {
         SharedLocationStore.showFeelsLikeTemperaturesKey,
         store: SharedLocationStore.defaults
     ) private var showFeelsLikeTemperatures: Bool = false
+    @AppStorage(
+        SharedLocationStore.homeWidgetDarkModeKey,
+        store: SharedLocationStore.defaults
+    ) private var legacyHomeWidgetDarkMode: Bool = false
+    @AppStorage(
+        SharedLocationStore.homeWidgetAppearanceModeKey,
+        store: SharedLocationStore.defaults
+    ) private var homeWidgetAppearanceModeRawValue: String = ""
 
     private var cityName: String {
         entry.cityName ?? "Location"
     }
 
-    private let primaryTextColor = Color(white: 0.16)
-    private let secondaryTextColor = Color(white: 0.42)
+    private var palette: HomeWidgetPalette {
+        HomeWidgetPalette(isDarkMode: isHomeWidgetDarkMode)
+    }
+
+    private var isHomeWidgetDarkMode: Bool {
+        HomeWidgetAppearanceMode
+            .resolved(
+                rawValue: homeWidgetAppearanceModeRawValue,
+                legacyDarkMode: legacyHomeWidgetDarkMode
+            )
+            .isDark(for: entry)
+    }
 
     var body: some View {
         Group {
@@ -44,29 +62,29 @@ struct GlanceHomeSmallEntryView: View {
                             .font(.system(size: 8, weight: .medium))
                             .rotationEffect(.degrees(20))
                     }
-                    .foregroundStyle(primaryTextColor)
+                    .foregroundStyle(palette.primaryText)
 
                     Spacer(minLength: 0)
 
                     WidgetMonochromeWeatherIcon(condition: entry.currentCondition, pointSize: 31)
-                        .foregroundStyle(primaryTextColor)
+                        .foregroundStyle(palette.primaryText)
 
                     Spacer(minLength: 4)
 
                     SmallWidgetTemperatureText(
                         value: "\(entry.displayCurrentTemperature(showFeelsLike: showFeelsLikeTemperatures))°",
-                        primaryText: primaryTextColor
+                        primaryText: palette.primaryText
                     )
 
                     Text(entry.currentCondition.accessibilityLabel.capitalized)
                         .font(.system(size: 12, weight: .regular))
-                        .foregroundStyle(secondaryTextColor)
+                        .foregroundStyle(palette.secondaryText)
                         .lineLimit(1)
                         .minimumScaleFactor(0.8)
 
                     Text(" Weather")
                         .font(.system(size: 8, weight: .medium))
-                        .foregroundStyle(secondaryTextColor.opacity(0.78))
+                        .foregroundStyle(palette.secondaryText.opacity(0.78))
                         .lineLimit(1)
                         .padding(.top, 2)
                         .accessibilityHidden(true)
@@ -74,12 +92,16 @@ struct GlanceHomeSmallEntryView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
                 .padding(14)
             } else {
-                WidgetLockedView(style: .homeSmall)
+                WidgetLockedView(style: .homeSmall, isHomeWidgetDarkMode: isHomeWidgetDarkMode)
                     .padding(14)
             }
         }
         .containerBackground(for: .widget) {
-            WidgetGlassBackground(cornerRadius: 24, renderingMode: widgetRenderingMode)
+            WidgetGlassBackground(
+                cornerRadius: 24,
+                renderingMode: widgetRenderingMode,
+                isDarkMode: isHomeWidgetDarkMode
+            )
         }
     }
 }

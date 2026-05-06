@@ -344,7 +344,7 @@ struct OpenMeteoService {
 
             let future = hourlyPoints
                 .filter { $0.date > now }
-                .prefix(7)
+                .prefix(23)
                 .map { point in
                     AppHourlyForecast(
                         timeLabel: detailedHourLabel(for: point.date, timezone: timezone),

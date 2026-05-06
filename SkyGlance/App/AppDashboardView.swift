@@ -14,16 +14,17 @@ struct AppDashboardView: View {
             appBackground.ignoresSafeArea()
 
             ScrollView(showsIndicators: false) {
-                VStack(spacing: 14) {
+                VStack(spacing: 11) {
                     headerSection
                     currentConditionsCard
-                    summaryCard
-                    detailsGridCard
                     dailyForecastCard
+                    summaryCard
+                    weatherLayersCard
+                    detailsGridCard
                     footerSection
                 }
-                .padding(.horizontal, 16)
-                .padding(.bottom, 32)
+                .padding(.horizontal, 14)
+                .padding(.bottom, 24)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -86,14 +87,14 @@ struct AppDashboardView: View {
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 5) {
                     Text(snapshot.cityName)
-                        .font(.system(size: 26, weight: .bold))
+                        .font(.system(size: 24, weight: .bold))
                         .foregroundStyle(.white)
                     Image(systemName: "location.fill")
-                        .font(.system(size: 14, weight: .bold))
+                        .font(.system(size: 12, weight: .bold))
                         .foregroundStyle(.white.opacity(0.85))
                 }
                 Text("Just now")
-                    .font(.system(size: 14, weight: .regular))
+                    .font(.system(size: 13, weight: .regular))
                     .foregroundStyle(.white.opacity(0.55))
             }
 
@@ -101,9 +102,9 @@ struct AppDashboardView: View {
 
             Button(action: { onSettingsTapped?() }) {
                 Image(systemName: "ellipsis")
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(.white.opacity(0.85))
-                    .frame(width: 36, height: 36)
+                    .frame(width: 34, height: 34)
                     .background(
                         Circle()
                             .strokeBorder(.white.opacity(0.3), lineWidth: 1.2)
@@ -112,62 +113,71 @@ struct AppDashboardView: View {
             }
             .buttonStyle(.plain)
         }
-        .padding(.top, 8)
+        .padding(.top, 6)
     }
 
     // MARK: – Current Conditions Card
 
     private var currentConditionsCard: some View {
         GlassCard {
-            HStack(alignment: .center, spacing: 0) {
+            HStack(alignment: .center, spacing: 10) {
                 // Left: temp + condition
                 VStack(alignment: .leading, spacing: 2) {
                     Text(temp(primaryCurrentTemperature))
-                        .font(.system(size: 64, weight: .ultraLight, design: .rounded))
-                        .tracking(-2.5)
+                        .font(.system(size: 56, weight: .ultraLight, design: .rounded))
+                        .tracking(-2)
                         .monospacedDigit()
                         .foregroundStyle(.white)
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
 
                     Text(snapshot.conditionDescription)
-                        .font(.system(size: 16, weight: .medium))
+                        .font(.system(size: 15, weight: .medium))
                         .foregroundStyle(.white.opacity(0.9))
 
                     Text(secondaryTemperatureLabel)
-                        .font(.system(size: 15, weight: .medium))
+                        .font(.system(size: 13, weight: .medium))
                         .foregroundStyle(.white.opacity(0.78))
                         .lineLimit(1)
                         .minimumScaleFactor(0.85)
                 }
-                .frame(width: 130, alignment: .leading)
+                .frame(width: 104, alignment: .leading)
 
-                Spacer(minLength: 0)
-
-                // Right: hourly strip
-                HStack(spacing: 0) {
-                    ForEach(snapshot.hourly.prefix(6)) { hour in
-                        VStack(spacing: 8) {
-                            Text(compactLabel(hour.timeLabel))
-                                .font(.system(size: 11, weight: .regular, design: .rounded))
-                                .foregroundStyle(.white.opacity(0.65))
-
-                            WeatherIconView(condition: hour.condition)
-                                .frame(width: 22, height: 22)
-                                .foregroundStyle(.white.opacity(0.9))
-
-                            Text(temp(hour.displayTemperature(showFeelsLike: showFeelsLikeTemperatures)))
-                                .font(.system(size: 14, weight: .semibold, design: .rounded))
-                                .monospacedDigit()
-                                .foregroundStyle(.white)
+                // Right: scrollable hourly strip
+                ScrollView(.horizontal, showsIndicators: false) {
+                    LazyHStack(spacing: 8) {
+                        ForEach(snapshot.hourly) { hour in
+                            hourlyForecastColumn(hour)
                         }
-                        .frame(maxWidth: .infinity)
                     }
+                    .padding(.horizontal, 2)
                 }
+                .frame(maxWidth: .infinity)
             }
-            .padding(.horizontal, 18)
-            .padding(.vertical, 18)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 14)
         }
+    }
+
+    private func hourlyForecastColumn(_ hour: AppHourlyForecast) -> some View {
+        VStack(spacing: 8) {
+            Text(compactLabel(hour.timeLabel))
+                .font(.system(size: 10, weight: .regular, design: .rounded))
+                .foregroundStyle(.white.opacity(0.65))
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+
+            WeatherIconView(condition: hour.condition)
+                .frame(width: 20, height: 20)
+                .foregroundStyle(.white.opacity(0.9))
+
+            Text(temp(hour.displayTemperature(showFeelsLike: showFeelsLikeTemperatures)))
+                .font(.system(size: 13, weight: .semibold, design: .rounded))
+                .monospacedDigit()
+                .foregroundStyle(.white)
+                .lineLimit(1)
+        }
+        .frame(width: 34)
     }
 
     private func compactLabel(_ label: String) -> String {
@@ -181,84 +191,97 @@ struct AppDashboardView: View {
 
     private var summaryCard: some View {
         GlassCard {
-            HStack(alignment: .center, spacing: 14) {
+            HStack(alignment: .center, spacing: 12) {
                 WeatherIconView(condition: snapshot.condition)
-                    .frame(width: 30, height: 30)
+                    .frame(width: 26, height: 26)
                     .foregroundStyle(.white.opacity(0.75))
 
                 Text(snapshot.spotlightSubtitle)
-                    .font(.system(size: 14, weight: .regular))
+                    .font(.system(size: 13, weight: .regular))
                     .foregroundStyle(.white.opacity(0.82))
                     .fixedSize(horizontal: false, vertical: true)
                     .lineLimit(3)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 18)
-            .padding(.vertical, 16)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
         }
     }
 
     // MARK: – Details Grid Card
 
-    private var detailsGridCard: some View {
+    private var weatherLayersCard: some View {
         GlassCard {
-            let wind    = metricValue("Wind",        fallback: "--")
-            let windDir = metricDetail("Wind",       fallback: "")
-            let humidity = metricValue("Humidity",   fallback: "--")
-            let sunset  = metricValue("Sunset", from: snapshot.overviewMetrics, fallback: "--")
-            let aqVal   = metricValue("Air Quality", from: snapshot.overviewMetrics, fallback: "--")
-            let aqLabel = metricDetail("Air Quality", from: snapshot.overviewMetrics, fallback: "Good")
-            let vis     = metricValue("Visibility",  fallback: "--")
-            let pressure = metricValue("Pressure",   fallback: "--")
+            VStack(alignment: .leading, spacing: 10) {
+                SectionHeader(
+                    icon: "map.fill",
+                    title: "Sky Layers",
+                    subtitle: "Precipitation, temperature, air, and wind signals at a glance."
+                )
 
-            VStack(spacing: 0) {
-                // Row 1
-                HStack(spacing: 0) {
-                    DetailCell(
+                LazyVGrid(
+                    columns: [
+                        GridItem(.flexible(), spacing: 8),
+                        GridItem(.flexible(), spacing: 8),
+                    ],
+                    spacing: 8
+                ) {
+                    WeatherLayerTile(
+                        icon: "cloud.rain.fill",
+                        title: "Precipitation",
+                        value: nextPrecipitation.value,
+                        detail: nextPrecipitation.detail,
+                        accent: Color(red: 0.46, green: 0.78, blue: 1.0)
+                    )
+                    WeatherLayerTile(
+                        icon: "thermometer",
+                        title: "Temperature",
+                        value: temp(primaryCurrentTemperature),
+                        detail: "\(temp(snapshot.lowTemperature)) to \(temp(snapshot.highTemperature)) today",
+                        accent: Color(red: 1.0, green: 0.72, blue: 0.42)
+                    )
+                    WeatherLayerTile(
+                        icon: "aqi.medium",
+                        title: "Air Quality",
+                        value: metricValue("Air Quality", from: snapshot.overviewMetrics, fallback: "--"),
+                        detail: metricDetail("Air Quality", from: snapshot.overviewMetrics, fallback: "Not available"),
+                        accent: airQualityColor
+                    )
+                    WeatherLayerTile(
                         icon: "wind",
                         title: "Wind",
-                        value: wind,
-                        sub: windDir
-                    )
-                    cellDivider
-                    DetailCell(
-                        icon: "humidity",
-                        title: "Humidity",
-                        value: humidity,
-                        sub: nil
-                    )
-                    cellDivider
-                    DetailCell(
-                        icon: "sunset",
-                        title: "Sunset",
-                        value: sunset,
-                        sub: nil
-                    )
-                }
-
-                rowDivider
-
-                // Row 2
-                HStack(spacing: 0) {
-                    DetailCellAQI(value: aqVal, label: aqLabel)
-                    cellDivider
-                    DetailCell(
-                        icon: "eye",
-                        title: "Visibility",
-                        value: vis,
-                        sub: nil
-                    )
-                    cellDivider
-                    let pressureDetail = metricDetail("Pressure", fallback: "Steady")
-                    DetailCell(
-                        icon: "gauge",
-                        title: "Pressure",
-                        value: pressure,
-                        sub: pressureDetail.isEmpty ? "Steady" : pressureDetail
+                        value: metricValue("Wind", fallback: "--"),
+                        detail: metricDetail("Wind", fallback: ""),
+                        accent: Color(red: 0.78, green: 0.86, blue: 1.0)
                     )
                 }
             }
-            .padding(.vertical, 4)
+            .padding(12)
+        }
+    }
+
+    private var detailsGridCard: some View {
+        GlassCard {
+            VStack(alignment: .leading, spacing: 10) {
+                SectionHeader(
+                    icon: "sparkles.rectangle.stack.fill",
+                    title: "Atmosphere Matrix",
+                    subtitle: nil
+                )
+
+                LazyVGrid(
+                    columns: [
+                        GridItem(.flexible(), spacing: 8),
+                        GridItem(.flexible(), spacing: 8),
+                    ],
+                    spacing: 8
+                ) {
+                    ForEach(detailItems) { item in
+                        WeatherDetailTile(item: item)
+                    }
+                }
+            }
+            .padding(12)
         }
     }
 
@@ -284,6 +307,153 @@ struct AppDashboardView: View {
     private func metricDetail(_ title: String, from metrics: [AppMetric]? = nil, fallback: String) -> String {
         let source = metrics ?? snapshot.detailMetrics
         return source.first(where: { $0.title == title })?.detail ?? fallback
+    }
+
+    private var nextPrecipitation: (value: String, detail: String) {
+        if let hour = snapshot.hourly.dropFirst().first(where: { ($0.precipitationChance ?? 0) > 0 }),
+           let chance = hour.precipitationChance {
+            return ("\(chance)%", "around \(compactLabel(hour.timeLabel))")
+        }
+
+        if let day = snapshot.daily.first(where: { ($0.precipitationChance ?? 0) > 0 }),
+           let chance = day.precipitationChance {
+            return ("\(chance)%", day.dayLabel)
+        }
+
+        return ("0%", "No near-term signal")
+    }
+
+    private var airQualityColor: Color {
+        let value = Int(metricValue("Air Quality", from: snapshot.overviewMetrics, fallback: "0")) ?? 0
+        if value <= 50 { return Color(red: 0.35, green: 0.92, blue: 0.45) }
+        if value <= 100 { return Color(red: 0.95, green: 0.78, blue: 0.18) }
+        return Color(red: 1.0, green: 0.48, blue: 0.28)
+    }
+
+    private var moonPhase: (value: String, detail: String) {
+        let knownNewMoon = DateComponents(
+            calendar: Calendar(identifier: .gregorian),
+            timeZone: TimeZone(secondsFromGMT: 0),
+            year: 2000,
+            month: 1,
+            day: 6,
+            hour: 18,
+            minute: 14
+        ).date ?? Date()
+        let lunarCycle = 29.53058867
+        let daysSinceNewMoon = Date().timeIntervalSince(knownNewMoon) / 86_400
+        let phase = (daysSinceNewMoon / lunarCycle).truncatingRemainder(dividingBy: 1)
+
+        switch phase {
+        case 0..<0.03, 0.97...1:
+            return ("New", "Low moonlight")
+        case 0.03..<0.22:
+            return ("Waxing", "Crescent")
+        case 0.22..<0.28:
+            return ("First", "Quarter")
+        case 0.28..<0.47:
+            return ("Waxing", "Gibbous")
+        case 0.47..<0.53:
+            return ("Full", "Brightest phase")
+        case 0.53..<0.72:
+            return ("Waning", "Gibbous")
+        case 0.72..<0.78:
+            return ("Last", "Quarter")
+        default:
+            return ("Waning", "Crescent")
+        }
+    }
+
+    private var detailItems: [WeatherDetailItem] {
+        let pressureDetail = metricDetail("Pressure", fallback: "Steady")
+        let moon = moonPhase
+
+        return [
+            WeatherDetailItem(
+                icon: "cloud.rain.fill",
+                title: "Precipitation",
+                value: nextPrecipitation.value,
+                detail: nextPrecipitation.detail,
+                accent: Color(red: 0.46, green: 0.78, blue: 1.0)
+            ),
+            WeatherDetailItem(
+                icon: "sun.max.fill",
+                title: "UV Index",
+                value: metricValue("UV Index", from: snapshot.overviewMetrics, fallback: "--"),
+                detail: metricDetail("UV Index", from: snapshot.overviewMetrics, fallback: "Not available"),
+                accent: Color(red: 1.0, green: 0.78, blue: 0.30)
+            ),
+            WeatherDetailItem(
+                icon: "thermometer.medium",
+                title: "Feels Like",
+                value: metricValue("Feels Like", fallback: temp(snapshot.feelsLikeTemperature)),
+                detail: showFeelsLikeTemperatures ? "Shown as primary" : "Comfort read",
+                accent: Color(red: 1.0, green: 0.70, blue: 0.48)
+            ),
+            WeatherDetailItem(
+                icon: "wind",
+                title: "Wind",
+                value: metricValue("Wind", fallback: "--"),
+                detail: metricDetail("Wind", fallback: ""),
+                accent: Color(red: 0.78, green: 0.86, blue: 1.0)
+            ),
+            WeatherDetailItem(
+                icon: "humidity.fill",
+                title: "Humidity",
+                value: metricValue("Humidity", fallback: "--"),
+                detail: "Moisture",
+                accent: Color(red: 0.50, green: 0.82, blue: 1.0)
+            ),
+            WeatherDetailItem(
+                icon: "drop.fill",
+                title: "Dew Point",
+                value: metricValue("Dew Point", fallback: "--"),
+                detail: "Condensation point",
+                accent: Color(red: 0.58, green: 0.90, blue: 1.0)
+            ),
+            WeatherDetailItem(
+                icon: "gauge.medium",
+                title: "Pressure",
+                value: metricValue("Pressure", fallback: "--"),
+                detail: pressureDetail.isEmpty ? "Steady" : pressureDetail,
+                accent: Color(red: 0.74, green: 0.76, blue: 0.96)
+            ),
+            WeatherDetailItem(
+                icon: "eye.fill",
+                title: "Visibility",
+                value: metricValue("Visibility", fallback: "--"),
+                detail: "Line of sight",
+                accent: Color(red: 0.70, green: 0.88, blue: 1.0)
+            ),
+            WeatherDetailItem(
+                icon: "aqi.medium",
+                title: "Air Quality",
+                value: metricValue("Air Quality", from: snapshot.overviewMetrics, fallback: "--"),
+                detail: metricDetail("Air Quality", from: snapshot.overviewMetrics, fallback: "Not available"),
+                accent: airQualityColor
+            ),
+            WeatherDetailItem(
+                icon: "sunrise.fill",
+                title: "Sunrise",
+                value: metricValue("Sunrise", from: snapshot.overviewMetrics, fallback: "--"),
+                detail: "First light",
+                accent: Color(red: 1.0, green: 0.76, blue: 0.45)
+            ),
+            WeatherDetailItem(
+                icon: "sunset.fill",
+                title: "Sunset",
+                value: metricValue("Sunset", from: snapshot.overviewMetrics, fallback: "--"),
+                detail: "Last light",
+                accent: Color(red: 1.0, green: 0.58, blue: 0.50)
+            ),
+            WeatherDetailItem(
+                icon: "moon.stars.fill",
+                title: "Moon",
+                value: moon.value,
+                detail: moon.detail,
+                accent: Color(red: 0.78, green: 0.72, blue: 1.0)
+            ),
+        ]
     }
 
     // MARK: – Daily Forecast Card
@@ -312,7 +482,8 @@ struct AppDashboardView: View {
                     }
                 }
             }
-            .padding(.vertical, 6)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 4)
         }
     }
 
@@ -366,6 +537,150 @@ private struct GlassCard<Content: View>: View {
 
             content
         }
+    }
+}
+
+private struct SectionHeader: View {
+    let icon: String
+    let title: String
+    let subtitle: String?
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: icon)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.78))
+                .frame(width: 24, height: 24)
+                .background(
+                    Circle()
+                        .fill(.white.opacity(0.10))
+                )
+                .overlay(
+                    Circle()
+                        .strokeBorder(.white.opacity(0.14), lineWidth: 0.7)
+                )
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.system(size: 14, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.92))
+
+                if let subtitle {
+                    Text(subtitle)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.56))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
+            Spacer(minLength: 0)
+        }
+    }
+}
+
+private struct WeatherLayerTile: View {
+    let icon: String
+    let title: String
+    let value: String
+    let detail: String
+    let accent: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Image(systemName: icon)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(accent)
+                Text(title)
+                    .font(.system(size: 10.5, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.64))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+            }
+
+            Text(value.isEmpty ? "--" : value)
+                .font(.system(size: 19, weight: .semibold, design: .rounded))
+                .foregroundStyle(.white.opacity(0.96))
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
+
+            Text(detail.isEmpty ? "Current signal" : detail)
+                .font(.system(size: 10.5, weight: .medium))
+                .foregroundStyle(.white.opacity(0.54))
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(10)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(.white.opacity(0.10))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(accent.opacity(0.24), lineWidth: 0.8)
+        )
+    }
+}
+
+private struct WeatherDetailItem: Identifiable {
+    var id: String { title }
+    let icon: String
+    let title: String
+    let value: String
+    let detail: String
+    let accent: Color
+}
+
+private struct WeatherDetailTile: View {
+    let item: WeatherDetailItem
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(spacing: 6) {
+                Image(systemName: item.icon)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(item.accent)
+                    .frame(width: 14)
+
+                Text(item.title)
+                    .font(.system(size: 10.5, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.55))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+            }
+
+            Text(item.value.isEmpty ? "--" : item.value)
+                .font(.system(size: 18, weight: .semibold, design: .rounded))
+                .foregroundStyle(.white.opacity(0.95))
+                .lineLimit(1)
+                .minimumScaleFactor(0.70)
+
+            Text(item.detail.isEmpty ? "Current" : item.detail)
+                .font(.system(size: 10.5, weight: .medium))
+                .foregroundStyle(.white.opacity(0.55))
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
+        }
+        .frame(maxWidth: .infinity, minHeight: 68, alignment: .topLeading)
+        .padding(10)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            .white.opacity(0.12),
+                            .white.opacity(0.045),
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(.white.opacity(0.12), lineWidth: 0.7)
+        )
     }
 }
 
@@ -482,21 +797,25 @@ private struct DailyRow: View {
     }
 
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 8) {
             Text(day.dayLabel)
-                .font(.system(size: 16, weight: .medium))
+                .font(.system(size: 15, weight: .medium))
                 .foregroundStyle(.white)
-                .frame(width: 46, alignment: .leading)
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
+                .frame(width: 54, alignment: .leading)
 
             WeatherIconView(condition: day.condition)
-                .frame(width: 22, height: 22)
+                .frame(width: 20, height: 20)
                 .foregroundStyle(.white.opacity(0.85))
 
             Text(temp(day.lowTemperature))
-                .font(.system(size: 15, weight: .regular, design: .rounded))
+                .font(.system(size: 14, weight: .regular, design: .rounded))
                 .monospacedDigit()
                 .foregroundStyle(.white.opacity(0.5))
-                .frame(width: 36, alignment: .trailing)
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
+                .frame(width: 32, alignment: .trailing)
 
             // Temperature range bar
             GeometryReader { geo in
@@ -525,13 +844,16 @@ private struct DailyRow: View {
             .frame(height: 5)
 
             Text(temp(day.highTemperature))
-                .font(.system(size: 15, weight: .semibold, design: .rounded))
+                .font(.system(size: 14, weight: .semibold, design: .rounded))
                 .monospacedDigit()
                 .foregroundStyle(.white)
-                .frame(width: 36, alignment: .trailing)
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
+                .frame(width: 32, alignment: .trailing)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 13)
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
     }
 }
 

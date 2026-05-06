@@ -98,22 +98,27 @@ struct GlanceWidgetEntry: TimelineEntry, Codable {
     }
 
     var homeSunEventSymbol: String {
-        isNighttime ? "sunrise" : "sunset"
+        isNighttimeForAppearance ? "sunrise" : "sunset"
     }
 
     var homeSunEventTime: String {
-        if isNighttime {
+        if isNighttimeForAppearance {
             return sunriseTime ?? "--"
         }
 
         return sunsetTime ?? "--"
     }
 
-    private var isNighttime: Bool {
+    var isNighttimeForAppearance: Bool {
         if let isDaylight {
             return !isDaylight
         }
 
-        return currentCondition.isNightVariant
+        if currentCondition.isNightVariant {
+            return true
+        }
+
+        let hour = Calendar.autoupdatingCurrent.component(.hour, from: date)
+        return hour < 6 || hour >= 18
     }
 }
