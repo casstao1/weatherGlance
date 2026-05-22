@@ -2,11 +2,34 @@ import SwiftUI
 
 struct PaywallView: View {
     @ObservedObject var purchaseManager: PurchaseManager
+    var onDismiss: (() -> Void)?
 
     var body: some View {
         ZStack {
             Color(red: 0.08, green: 0.11, blue: 0.16)
                 .ignoresSafeArea()
+
+            if let onDismiss {
+                VStack {
+                    HStack {
+                        Spacer()
+
+                        Button(action: onDismiss) {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 14, weight: .bold))
+                                .foregroundStyle(.white.opacity(0.82))
+                                .frame(width: 38, height: 38)
+                                .background(Color.white.opacity(0.12), in: Circle())
+                        }
+                        .accessibilityLabel("Close")
+                    }
+                    .padding(.top, 18)
+                    .padding(.horizontal, 20)
+
+                    Spacer()
+                }
+                .zIndex(1)
+            }
 
             VStack(spacing: 24) {
                 Spacer(minLength: 24)

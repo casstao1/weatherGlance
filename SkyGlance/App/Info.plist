@@ -27,6 +27,12 @@
 	</dict>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>SkyGlance uses your location to show the current weather and hourly forecast where you are.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>SkyGlance uses your location in the background only to keep forecasts and widgets current when you travel.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>location</string>
+	</array>
 	<key>UILaunchScreen</key>
 	<dict/>
 	<key>UIRequiresFullScreen</key>

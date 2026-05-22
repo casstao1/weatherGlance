@@ -2,18 +2,26 @@ import SwiftUI
 import CoreLocation
 import WidgetKit
 import UserNotifications
+import StoreKit
 
 struct ContentView: View {
     @StateObject private var service = WeatherService.shared
     @StateObject private var locationManager = LocationManager()
     @StateObject private var purchaseManager = PurchaseManager()
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.requestReview) private var requestReview
     @AppStorage("useCelsius") private var useCelsius: Bool = false
+    @AppStorage("onboarding.didShowFirstLaunchPaywallV1") private var didShowFirstLaunchPaywall: Bool = false
+    @AppStorage("review.launchCountV1") private var reviewLaunchCount: Int = 0
+    @AppStorage("review.lastPromptedVersionV1") private var lastReviewPromptedVersion: String = ""
+    @AppStorage("review.didPromptAfterLifetimeUnlockV1") private var didPromptAfterLifetimeUnlock: Bool = false
     @AppStorage(
         SharedLocationStore.showFeelsLikeTemperaturesKey,
         store: SharedLocationStore.defaults
     ) private var showFeelsLikeTemperatures: Bool = false
     @State private var showSettings = false
+    @State private var showFirstLaunchPaywall = false
+    @State private var didCountThisLaunchForReview = false
     @State private var trialExpirationTask: Task<Void, Never>?
     private let trialReminderNotificationID = "com.castao.weatherGlance.trialReminder.oneDayRemaining"
     private let refreshTimer = Timer.publish(every: 300, on: .main, in: .common).autoconnect()
@@ -43,9 +51,17 @@ struct ContentView: View {
                 .presentationDetents([.medium, .large])
                 .presentationCornerRadius(24)
         }
+        .fullScreenCover(isPresented: $showFirstLaunchPaywall) {
+            PaywallView(purchaseManager: purchaseManager) {
+                didShowFirstLaunchPaywall = true
+                showFirstLaunchPaywall = false
+            }
+        }
         .task {
             await purchaseManager.configure()
             updateTrialSchedules()
+            presentFirstLaunchPaywallIfNeeded()
+            trackLaunchForReviewPromptIfNeeded()
             guard purchaseManager.hasProAccess else { return }
             startWeatherUpdates()
         }
@@ -55,6 +71,8 @@ struct ContentView: View {
             Task {
                 await purchaseManager.configure()
                 updateTrialSchedules()
+                presentFirstLaunchPaywallIfNeeded()
+                trackLaunchForReviewPromptIfNeeded()
                 guard purchaseManager.hasProAccess else {
                     WidgetCenter.shared.reloadAllTimelines()
                     return
@@ -67,11 +85,14 @@ struct ContentView: View {
         .onChange(of: purchaseManager.hasProAccess) { _, hasProAccess in
             WidgetCenter.shared.reloadAllTimelines()
             updateTrialSchedules()
+            presentFirstLaunchPaywallIfNeeded()
+            trackLaunchForReviewPromptIfNeeded()
             guard hasProAccess else { return }
             startWeatherUpdates(forceRefreshExistingLocation: true)
         }
-        .onChange(of: purchaseManager.isLifetimeUnlocked) { _, _ in
+        .onChange(of: purchaseManager.isLifetimeUnlocked) { _, isLifetimeUnlocked in
             updateTrialSchedules()
+            requestReviewAfterLifetimeUnlockIfNeeded(isLifetimeUnlocked: isLifetimeUnlocked)
         }
         .onChange(of: locationManager.location) { _, newLocation in
             guard purchaseManager.hasProAccess, let loc = newLocation else { return }
@@ -144,6 +165,55 @@ struct ContentView: View {
         Task {
             await scheduleTrialReminderNotification()
         }
+    }
+
+    private func presentFirstLaunchPaywallIfNeeded() {
+        guard !didShowFirstLaunchPaywall,
+              purchaseManager.hasProAccess,
+              !purchaseManager.isLifetimeUnlocked,
+              !purchaseManager.isTrialExpired
+        else {
+            return
+        }
+
+        showFirstLaunchPaywall = true
+    }
+
+    private func trackLaunchForReviewPromptIfNeeded() {
+        guard !didCountThisLaunchForReview,
+              purchaseManager.hasProAccess,
+              !purchaseManager.isTrialExpired,
+              !showFirstLaunchPaywall
+        else {
+            return
+        }
+
+        didCountThisLaunchForReview = true
+        reviewLaunchCount += 1
+
+        guard reviewLaunchCount >= 3,
+              lastReviewPromptedVersion != currentAppVersion
+        else {
+            return
+        }
+
+        lastReviewPromptedVersion = currentAppVersion
+        requestReview()
+    }
+
+    private func requestReviewAfterLifetimeUnlockIfNeeded(isLifetimeUnlocked: Bool) {
+        guard isLifetimeUnlocked,
+              !didPromptAfterLifetimeUnlock
+        else {
+            return
+        }
+
+        didPromptAfterLifetimeUnlock = true
+        requestReview()
+    }
+
+    private var currentAppVersion: String {
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown"
     }
 
     private func scheduleTrialExpirationRefresh() {
@@ -298,6 +368,7 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
     private var requestStartedAt: Date?
     private var bestLocationThisRequest: CLLocation?
     private var lastWidgetReloadAt: Date?
+    private let travelLocationMinimumDistance: CLLocationDistance = 10_000
 
     override init() {
         authorizationStatus = manager.authorizationStatus
@@ -317,6 +388,7 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
         if isUsingManualLocation {
             if restoreManualLocationIfAvailable() != nil {
                 stopUpdatingLocation()
+                updateTravelTrackingMode()
                 return
             }
 
@@ -325,14 +397,22 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
         }
 
         switch authorizationStatus {
-        case .authorizedAlways, .authorizedWhenInUse:
+        case .authorizedAlways:
             requestPreciseLocationIfNeeded()
+            updateTravelTrackingMode()
+            requestFreshLocation()
+        case .authorizedWhenInUse:
+            requestPreciseLocationIfNeeded()
+            requestAlwaysAuthorizationIfNeeded()
+            updateTravelTrackingMode()
             requestFreshLocation()
         case .notDetermined:
             manager.requestWhenInUseAuthorization()
         case .denied, .restricted:
+            updateTravelTrackingMode()
             break
         @unknown default:
+            updateTravelTrackingMode()
             break
         }
     }
@@ -367,6 +447,7 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
     func useManualLocation(_ newLocation: CLLocation, cityName newCityName: String?) {
         stopUpdatingLocation()
         isUsingManualLocation = true
+        updateTravelTrackingMode()
         cityName = newCityName
         location = newLocation
         SharedLocationStore.save(location: newLocation, cityName: newCityName, isManual: true)
@@ -391,8 +472,7 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
             let freshLocations = locations
                 .filter { candidate in
                     candidate.horizontalAccuracy >= 0 &&
-                    abs(candidate.timestamp.timeIntervalSinceNow) < 30 &&
-                    isFromCurrentRequest(candidate)
+                    isUsableLocationUpdate(candidate)
                 }
                 .sorted { lhs, rhs in
                     if lhs.horizontalAccuracy == rhs.horizontalAccuracy {
@@ -435,13 +515,21 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
             authorizationStatus = manager.authorizationStatus
 
             switch authorizationStatus {
-            case .authorizedAlways, .authorizedWhenInUse:
+            case .authorizedAlways:
                 requestPreciseLocationIfNeeded()
+                updateTravelTrackingMode()
+                requestFreshLocation()
+            case .authorizedWhenInUse:
+                requestPreciseLocationIfNeeded()
+                requestAlwaysAuthorizationIfNeeded()
+                updateTravelTrackingMode()
                 requestFreshLocation()
             case .denied, .restricted, .notDetermined:
                 stopUpdatingLocation()
+                updateTravelTrackingMode()
                 break
             @unknown default:
+                updateTravelTrackingMode()
                 break
             }
         }
@@ -470,6 +558,30 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
         manager.stopUpdatingLocation()
     }
 
+    private func requestAlwaysAuthorizationIfNeeded() {
+        guard manager.authorizationStatus == .authorizedWhenInUse else { return }
+        manager.requestAlwaysAuthorization()
+    }
+
+    private func updateTravelTrackingMode() {
+        guard !isUsingManualLocation else {
+            manager.stopMonitoringSignificantLocationChanges()
+            manager.allowsBackgroundLocationUpdates = false
+            manager.pausesLocationUpdatesAutomatically = true
+            return
+        }
+
+        if manager.authorizationStatus == .authorizedAlways {
+            manager.allowsBackgroundLocationUpdates = true
+            manager.pausesLocationUpdatesAutomatically = true
+            manager.startMonitoringSignificantLocationChanges()
+        } else {
+            manager.stopMonitoringSignificantLocationChanges()
+            manager.allowsBackgroundLocationUpdates = false
+            manager.pausesLocationUpdatesAutomatically = false
+        }
+    }
+
     private func requestPreciseLocationIfNeeded() {
         guard #available(iOS 14.0, *), manager.accuracyAuthorization == .reducedAccuracy else {
             return
@@ -481,6 +593,17 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
     private func isFromCurrentRequest(_ candidate: CLLocation) -> Bool {
         guard let requestStartedAt else { return true }
         return candidate.timestamp >= requestStartedAt.addingTimeInterval(-2)
+    }
+
+    private func isUsableLocationUpdate(_ candidate: CLLocation) -> Bool {
+        if isFromCurrentRequest(candidate) {
+            return abs(candidate.timestamp.timeIntervalSinceNow) < 30
+        }
+
+        // Significant-change updates can arrive outside an active foreground request.
+        // Keep them fresh enough to avoid cached bootstrapping locations.
+        return manager.authorizationStatus == .authorizedAlways &&
+            abs(candidate.timestamp.timeIntervalSinceNow) < 5 * 60
     }
 
     private func selectBestLocation(_ candidate: CLLocation) -> CLLocation {
@@ -505,6 +628,10 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
 
         if currentLocation.horizontalAccuracy < 0 {
             return true
+        }
+
+        if !isFromCurrentRequest(newLocation) {
+            return newLocation.distance(from: currentLocation) >= travelLocationMinimumDistance
         }
 
         let movedDistance = newLocation.distance(from: currentLocation)
