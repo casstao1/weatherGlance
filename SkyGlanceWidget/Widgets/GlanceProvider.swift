@@ -2,15 +2,15 @@ import WidgetKit
 
 enum WidgetAccessPolicy {
     static var canRenderWeather: Bool {
-        EntitlementStore.hasProAccess
+        true
     }
 
     static func nextRefreshDate(default defaultDate: Date) -> Date {
-        guard canRenderWeather, !EntitlementStore.isLifetimeUnlocked else {
-            return defaultDate
-        }
+        defaultDate
+    }
 
-        return min(defaultDate, EntitlementStore.trialEndDate.addingTimeInterval(1))
+    static func interactionURL(kind: String) -> URL? {
+        URL(string: "skyglance://widget-interaction?kind=\(kind)")
     }
 }
 
@@ -62,6 +62,16 @@ struct GlanceProvider: TimelineProvider {
     }
 
     private func fetchTimelineResult(now: Date) async -> TimelineResult {
+        #if DEBUG
+        if let replayEntries = SharedLocationStore.loadDebugWidgetReplayEntries(now: now) {
+            let usableEntries = replayEntries.filter { $0.date >= now }
+            return TimelineResult(
+                entries: usableEntries.isEmpty ? [replayEntries.last ?? .placeholder] : usableEntries,
+                nextRefresh: replayEntries.last?.date.addingTimeInterval(5) ?? now.addingTimeInterval(5)
+            )
+        }
+        #endif
+
         guard WidgetAccessPolicy.canRenderWeather else {
             return TimelineResult(
                 entries: [.placeholder],

@@ -23,11 +23,12 @@ struct GlanceInlineEntryView: View {
             if WidgetAccessPolicy.canRenderWeather {
                 InlineSummaryView(condition: entry.currentCondition, text: entry.inlineSummary)
             } else {
-                Label("Trial ended", systemImage: "lock.fill")
+                Label("Open SkyGlance", systemImage: "cloud.sun.fill")
             }
         }
             .widgetAccentable()
             .foregroundStyle(.white)
+            .widgetURL(WidgetAccessPolicy.interactionURL(kind: GlanceInlineWidget.kind))
     }
 }
 

@@ -114,11 +114,51 @@ struct GlanceWidgetEntry: TimelineEntry, Codable {
             return !isDaylight
         }
 
+        if let isNighttimeFromSunEvents {
+            return isNighttimeFromSunEvents
+        }
+
         if currentCondition.isNightVariant {
             return true
         }
 
         let hour = Calendar.autoupdatingCurrent.component(.hour, from: date)
         return hour < 6 || hour >= 18
+    }
+
+    private var isNighttimeFromSunEvents: Bool? {
+        guard
+            let sunriseTime,
+            let sunsetTime,
+            let sunrise = compactSunEventDate(from: sunriseTime),
+            let sunset = compactSunEventDate(from: sunsetTime)
+        else {
+            return nil
+        }
+
+        return date < sunrise || date >= sunset
+    }
+
+    private func compactSunEventDate(from text: String) -> Date? {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed != "--" else { return nil }
+
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = Calendar.autoupdatingCurrent.timeZone
+
+        for format in ["h:mma", "h:mm a"] {
+            formatter.dateFormat = format
+            guard let timeOnlyDate = formatter.date(from: trimmed) else { continue }
+
+            var dayComponents = Calendar.autoupdatingCurrent.dateComponents([.year, .month, .day], from: date)
+            let timeComponents = Calendar.autoupdatingCurrent.dateComponents([.hour, .minute], from: timeOnlyDate)
+            dayComponents.hour = timeComponents.hour
+            dayComponents.minute = timeComponents.minute
+            dayComponents.second = 0
+            return Calendar.autoupdatingCurrent.date(from: dayComponents)
+        }
+
+        return nil
     }
 }

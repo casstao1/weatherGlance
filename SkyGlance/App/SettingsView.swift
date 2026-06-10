@@ -142,7 +142,7 @@ struct SettingsView: View {
 
                     if !purchaseManager.isLifetimeUnlocked {
                         Section {
-                            SettingsValueRow(title: "Trial", value: trialStatusText)
+                            SettingsValueRow(title: "Access", value: trialStatusText)
                                 .listRowBackground(Color.white.opacity(0.08))
 
                             Text(trialMessage)
@@ -289,10 +289,10 @@ struct SettingsView: View {
 
     private var trialMessage: String {
         if purchaseManager.isTrialExpired {
-            return "Your 7-day trial has ended. Unlock lifetime access once to keep using SkyGlance."
+            return "SkyGlance is included with the paid app purchase."
         }
 
-        return "Your 7-day trial includes the app and all widgets. Unlock once to keep access forever."
+        return "SkyGlance includes the app and all widgets with the paid download."
     }
 
     private var trialStatusText: String {
@@ -308,7 +308,7 @@ struct SettingsView: View {
             return "Loading Purchase..."
         }
 
-        return "Unlock Lifetime \(purchaseManager.displayPrice)"
+        return "Included"
     }
 }
 

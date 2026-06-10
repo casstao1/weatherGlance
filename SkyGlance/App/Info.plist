@@ -16,6 +16,17 @@
 	<string>SkyGlance</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.castao.weatherGlance</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>skyglance</string>
+			</array>
+		</dict>
+	</array>
 	<key>CFBundleShortVersionString</key>
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
@@ -29,6 +40,8 @@
 	<string>SkyGlance uses your location to show the current weather and hourly forecast where you are.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
 	<string>SkyGlance uses your location in the background only to keep forecasts and widgets current when you travel.</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>location</string>

@@ -1,7 +1,6 @@
 import SwiftUI
 import CoreLocation
 import WidgetKit
-import UserNotifications
 import StoreKit
 
 struct ContentView: View {
@@ -11,25 +10,24 @@ struct ContentView: View {
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.requestReview) private var requestReview
     @AppStorage("useCelsius") private var useCelsius: Bool = false
-    @AppStorage("onboarding.didShowFirstLaunchPaywallV1") private var didShowFirstLaunchPaywall: Bool = false
     @AppStorage("review.launchCountV1") private var reviewLaunchCount: Int = 0
     @AppStorage("review.lastPromptedVersionV1") private var lastReviewPromptedVersion: String = ""
-    @AppStorage("review.didPromptAfterLifetimeUnlockV1") private var didPromptAfterLifetimeUnlock: Bool = false
+    @AppStorage("review.widgetInteractionCountV1") private var widgetInteractionCount: Int = 0
+    @AppStorage("review.didPromptAfterSecondWidgetInteractionV1") private var didPromptAfterSecondWidgetInteraction: Bool = false
+    @AppStorage("review.didPromptAfterThirdWidgetInteractionV1") private var didPromptAfterThirdWidgetInteraction: Bool = false
     @AppStorage(
         SharedLocationStore.showFeelsLikeTemperaturesKey,
         store: SharedLocationStore.defaults
     ) private var showFeelsLikeTemperatures: Bool = false
     @State private var showSettings = false
-    @State private var showFirstLaunchPaywall = false
     @State private var didCountThisLaunchForReview = false
-    @State private var trialExpirationTask: Task<Void, Never>?
-    private let trialReminderNotificationID = "com.castao.weatherGlance.trialReminder.oneDayRemaining"
+    @State private var debugWidgetReplayTask: Task<Void, Never>?
     private let refreshTimer = Timer.publish(every: 300, on: .main, in: .common).autoconnect()
     private let entitlementTimer = Timer.publish(every: 60, on: .main, in: .common).autoconnect()
 
     var body: some View {
         Group {
-            if purchaseManager.hasProAccess {
+            if shouldShowDashboard {
                 dashboardView
             } else {
                 PaywallView(purchaseManager: purchaseManager)
@@ -41,7 +39,6 @@ struct ContentView: View {
                 locationManager: locationManager,
                 onEntitlementsChanged: {
                     purchaseManager.refreshAccessState()
-                    updateTrialSchedules()
                     WidgetCenter.shared.reloadAllTimelines()
                 },
                 onWeatherLocationChanged: {
@@ -51,16 +48,9 @@ struct ContentView: View {
                 .presentationDetents([.medium, .large])
                 .presentationCornerRadius(24)
         }
-        .fullScreenCover(isPresented: $showFirstLaunchPaywall) {
-            PaywallView(purchaseManager: purchaseManager) {
-                didShowFirstLaunchPaywall = true
-                showFirstLaunchPaywall = false
-            }
-        }
         .task {
+            startDebugWidgetReplayIfNeeded()
             await purchaseManager.configure()
-            updateTrialSchedules()
-            presentFirstLaunchPaywallIfNeeded()
             trackLaunchForReviewPromptIfNeeded()
             guard purchaseManager.hasProAccess else { return }
             startWeatherUpdates()
@@ -70,8 +60,6 @@ struct ContentView: View {
 
             Task {
                 await purchaseManager.configure()
-                updateTrialSchedules()
-                presentFirstLaunchPaywallIfNeeded()
                 trackLaunchForReviewPromptIfNeeded()
                 guard purchaseManager.hasProAccess else {
                     WidgetCenter.shared.reloadAllTimelines()
@@ -84,15 +72,9 @@ struct ContentView: View {
         }
         .onChange(of: purchaseManager.hasProAccess) { _, hasProAccess in
             WidgetCenter.shared.reloadAllTimelines()
-            updateTrialSchedules()
-            presentFirstLaunchPaywallIfNeeded()
             trackLaunchForReviewPromptIfNeeded()
             guard hasProAccess else { return }
             startWeatherUpdates(forceRefreshExistingLocation: true)
-        }
-        .onChange(of: purchaseManager.isLifetimeUnlocked) { _, isLifetimeUnlocked in
-            updateTrialSchedules()
-            requestReviewAfterLifetimeUnlockIfNeeded(isLifetimeUnlocked: isLifetimeUnlocked)
         }
         .onChange(of: locationManager.location) { _, newLocation in
             guard purchaseManager.hasProAccess, let loc = newLocation else { return }
@@ -114,13 +96,12 @@ struct ContentView: View {
         }
         .onReceive(entitlementTimer) { _ in
             purchaseManager.refreshAccessState()
-            updateTrialSchedules()
         }
         .onChange(of: showFeelsLikeTemperatures) { _, _ in
             WidgetCenter.shared.reloadAllTimelines()
         }
-        .onDisappear {
-            trialExpirationTask?.cancel()
+        .onOpenURL { url in
+            handleIncomingURL(url)
         }
     }
 
@@ -128,6 +109,24 @@ struct ContentView: View {
     private var dashboardView: some View {
         let theme = GlanceThemeResolver.widgetGlassTheme(colorScheme: .dark)
 
+        #if DEBUG
+        if DebugWeatherReplayView.isEnabled {
+            DebugWeatherReplayView(theme: theme, useCelsius: useCelsius)
+                .transition(.opacity)
+        } else if service.hasLoadedDashboardSnapshot {
+            AppDashboardView(
+                snapshot: service.dashboardSnapshot,
+                theme: theme,
+                useCelsius: useCelsius,
+                showFeelsLikeTemperatures: showFeelsLikeTemperatures,
+                onSettingsTapped: { showSettings = true }
+            )
+            .transition(.opacity)
+        } else {
+            SkyGlanceLoadingView()
+                .transition(.opacity)
+        }
+        #else
         if service.hasLoadedDashboardSnapshot {
             AppDashboardView(
                 snapshot: service.dashboardSnapshot,
@@ -141,6 +140,7 @@ struct ContentView: View {
             SkyGlanceLoadingView()
                 .transition(.opacity)
         }
+        #endif
     }
 
     private func refreshCurrentLocation() {
@@ -159,31 +159,10 @@ struct ContentView: View {
         }
     }
 
-    private func updateTrialSchedules() {
-        scheduleTrialExpirationRefresh()
-
-        Task {
-            await scheduleTrialReminderNotification()
-        }
-    }
-
-    private func presentFirstLaunchPaywallIfNeeded() {
-        guard !didShowFirstLaunchPaywall,
-              purchaseManager.hasProAccess,
-              !purchaseManager.isLifetimeUnlocked,
-              !purchaseManager.isTrialExpired
-        else {
-            return
-        }
-
-        showFirstLaunchPaywall = true
-    }
-
     private func trackLaunchForReviewPromptIfNeeded() {
         guard !didCountThisLaunchForReview,
               purchaseManager.hasProAccess,
-              !purchaseManager.isTrialExpired,
-              !showFirstLaunchPaywall
+              !purchaseManager.isTrialExpired
         else {
             return
         }
@@ -201,105 +180,292 @@ struct ContentView: View {
         requestReview()
     }
 
-    private func requestReviewAfterLifetimeUnlockIfNeeded(isLifetimeUnlocked: Bool) {
-        guard isLifetimeUnlocked,
-              !didPromptAfterLifetimeUnlock
+    private func handleIncomingURL(_ url: URL) {
+        guard url.scheme == "skyglance",
+              url.host == "widget-interaction"
         else {
             return
         }
 
-        didPromptAfterLifetimeUnlock = true
-        requestReview()
+        widgetInteractionCount += 1
+
+        if widgetInteractionCount == 2, !didPromptAfterSecondWidgetInteraction {
+            didPromptAfterSecondWidgetInteraction = true
+            requestReview()
+        } else if widgetInteractionCount == 3, !didPromptAfterThirdWidgetInteraction {
+            didPromptAfterThirdWidgetInteraction = true
+            requestReview()
+        }
     }
 
     private var currentAppVersion: String {
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown"
     }
 
-    private func scheduleTrialExpirationRefresh() {
-        trialExpirationTask?.cancel()
+    private var shouldShowDashboard: Bool {
+        #if DEBUG
+        purchaseManager.hasProAccess || DebugWeatherReplayView.isEnabled
+        #else
+        purchaseManager.hasProAccess
+        #endif
+    }
 
-        guard purchaseManager.hasProAccess, !purchaseManager.isLifetimeUnlocked else {
-            trialExpirationTask = nil
-            return
-        }
+    private func startDebugWidgetReplayIfNeeded() {
+        #if DEBUG
+        guard DebugWeatherReplayView.isEnabled, debugWidgetReplayTask == nil else { return }
+        debugWidgetReplayTask = DebugWidgetReplayController.start()
+        #endif
+    }
 
-        let secondsUntilExpiration = max(0, EntitlementStore.trialEndDate.timeIntervalSinceNow + 1)
-        let nanosecondsUntilExpiration = UInt64(secondsUntilExpiration * 1_000_000_000)
+}
 
-        trialExpirationTask = Task { @MainActor in
-            try? await Task.sleep(nanoseconds: nanosecondsUntilExpiration)
-            guard !Task.isCancelled else { return }
+#if DEBUG
+private enum DebugWidgetReplayController {
+    private static let simulatedMinutes = 9 * 60
+    private static let durationSeconds: TimeInterval = 20
 
-            purchaseManager.refreshAccessState()
-            WidgetCenter.shared.reloadAllTimelines()
+    static func start() -> Task<Void, Never> {
+        Task {
+            SharedLocationStore.clearDebugWidgetReplay()
+
+            let startDate = Date().addingTimeInterval(1)
+            let interval = durationSeconds / Double(simulatedMinutes)
+            let entries = (0..<simulatedMinutes).map { minute in
+                makeWidgetEntry(
+                    simulatedMinute: minute,
+                    date: startDate.addingTimeInterval(Double(minute) * interval)
+                )
+            }
+            SharedLocationStore.saveDebugWidgetReplay(
+                entries: entries,
+                activeUntil: startDate.addingTimeInterval(durationSeconds + 10)
+            )
+            await MainActor.run {
+                WidgetCenter.shared.reloadAllTimelines()
+            }
         }
     }
 
-    private func scheduleTrialReminderNotification() async {
-        let center = UNUserNotificationCenter.current()
+    private static func makeWidgetEntry(simulatedMinute: Int, date: Date) -> GlanceWidgetEntry {
+        let replayDate = replayDate(for: simulatedMinute)
+        let condition = condition(for: simulatedMinute)
+        let temperature = temperature(for: simulatedMinute)
+        let remainingMinutes = max(0, simulatedMinutes - simulatedMinute - 1)
 
-        guard purchaseManager.hasProAccess,
-              !purchaseManager.isLifetimeUnlocked,
-              EntitlementStore.isTrialActive
-        else {
-            removeTrialReminderNotification(center: center)
-            return
-        }
-
-        let reminderDate = EntitlementStore.trialEndDate.addingTimeInterval(-86_400)
-        guard reminderDate > Date() else {
-            removeTrialReminderNotification(center: center)
-            return
-        }
-
-        guard await canSendTrialReminderNotification(center: center) else {
-            removeTrialReminderNotification(center: center)
-            return
-        }
-
-        removeTrialReminderNotification(center: center)
-
-        let content = UNMutableNotificationContent()
-        content.title = "SkyGlance trial ends tomorrow"
-        content.body = "Unlock lifetime access to keep using the app and all widgets."
-        content.sound = .default
-        content.threadIdentifier = "trial"
-
-        let components = Calendar.current.dateComponents(
-            [.year, .month, .day, .hour, .minute, .second],
-            from: reminderDate
+        return GlanceWidgetEntry(
+            date: date,
+            cityName: "NYC",
+            currentTemperature: temperature,
+            currentCondition: condition,
+            inlineSummary: "\(remainingMinutes)m left",
+            hours: minuteForecastItems(from: replayDate, simulatedMinute: simulatedMinute),
+            mood: temperature >= 68 ? .warm : .cool,
+            feelsLikeTemperature: temperature - 1,
+            windSpeed: "\(windSpeed(for: simulatedMinute)) mph",
+            sunriseTime: "5:27A",
+            sunsetTime: "8:22P",
+            isDaylight: replayDate < replaySunsetDate(for: replayDate)
         )
-        let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: false)
-        let request = UNNotificationRequest(
-            identifier: trialReminderNotificationID,
-            content: content,
-            trigger: trigger
-        )
-
-        try? await center.add(request)
     }
 
-    private func canSendTrialReminderNotification(center: UNUserNotificationCenter) async -> Bool {
-        let settings = await center.notificationSettings()
-
-        switch settings.authorizationStatus {
-        case .authorized, .provisional, .ephemeral:
-            return true
-        case .notDetermined:
-            return (try? await center.requestAuthorization(options: [.alert, .sound, .badge])) == true
-        case .denied:
-            return false
-        @unknown default:
-            return false
+    private static func minuteForecastItems(
+        from date: Date,
+        simulatedMinute: Int
+    ) -> [HourForecastItem] {
+        (0..<6).map { offset in
+            let forecastMinute = min(simulatedMinute + offset * 60, simulatedMinutes - 1)
+            let forecastDate = Calendar.current.date(byAdding: .hour, value: offset, to: date) ?? date
+            return HourForecastItem(
+                label: offset == 0 ? "Now" : hourLabel(for: forecastDate),
+                condition: condition(for: forecastMinute),
+                temperature: temperature(for: forecastMinute),
+                feelsLikeTemperature: temperature(for: forecastMinute) - 1
+            )
         }
     }
 
-    private func removeTrialReminderNotification(center: UNUserNotificationCenter) {
-        center.removePendingNotificationRequests(withIdentifiers: [trialReminderNotificationID])
-        center.removeDeliveredNotifications(withIdentifiers: [trialReminderNotificationID])
+    private static func replayDate(for simulatedMinute: Int) -> Date {
+        var components = Calendar.current.dateComponents([.year, .month, .day], from: Date())
+        components.day = (components.day ?? 1) - 1
+        components.hour = 15
+        components.minute = 0
+        let start = Calendar.current.date(from: components) ?? Date()
+        return Calendar.current.date(byAdding: .minute, value: simulatedMinute, to: start) ?? start
+    }
+
+    private static func replaySunsetDate(for date: Date) -> Date {
+        var components = Calendar.current.dateComponents([.year, .month, .day], from: date)
+        components.hour = 20
+        components.minute = 22
+        components.second = 0
+        return Calendar.current.date(from: components) ?? date
+    }
+
+    private static func minuteLabel(for date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "h:mm"
+        return formatter.string(from: date)
+    }
+
+    private static func hourLabel(for date: Date) -> String {
+        let hour = Calendar.current.component(.hour, from: date)
+        let hour12 = hour % 12 == 0 ? 12 : hour % 12
+        return "\(hour12)\(hour < 12 ? "A" : "P")"
+    }
+
+    private static func temperature(for simulatedMinute: Int) -> Int {
+        let progress = Double(simulatedMinute) / Double(max(simulatedMinutes - 1, 1))
+        return 74 - Int((progress * 16).rounded())
+    }
+
+    private static func windSpeed(for simulatedMinute: Int) -> Int {
+        let progress = Double(simulatedMinute) / Double(max(simulatedMinutes - 1, 1))
+        return 5 + Int((sin(progress * .pi) * 9).rounded())
+    }
+
+    private static func condition(for simulatedMinute: Int) -> WeatherCondition {
+        switch simulatedMinute {
+        case 0..<90:
+            return .mostlySunny
+        case 90..<210:
+            return .cloudy
+        case 210..<330:
+            return .rain
+        case 330..<450:
+            return .cloudy
+        default:
+            return .clearNight
+        }
     }
 }
+
+private struct DebugWeatherReplayView: View {
+    static var isEnabled: Bool {
+        ProcessInfo.processInfo.arguments.contains("-skyglanceReplayYesterday12h")
+    }
+
+    let theme: GlanceTheme
+    let useCelsius: Bool
+
+    @State private var frameIndex = 0
+    private let frames = DebugWeatherReplayFactory.makeFrames()
+    private let replayTimer = Timer.publish(every: 20.0 / 12.0, on: .main, in: .common).autoconnect()
+
+    var body: some View {
+        ZStack(alignment: .top) {
+            AppDashboardView(
+                snapshot: frames[frameIndex],
+                theme: theme,
+                useCelsius: useCelsius,
+                showFeelsLikeTemperatures: false,
+                onSettingsTapped: nil
+            )
+
+            VStack(spacing: 6) {
+                Text("Yesterday Weather Replay")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.white)
+                Text("12 hours compressed into 20 seconds")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.72))
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 9)
+            .background(
+                Capsule()
+                    .fill(.black.opacity(0.34))
+                    .overlay(Capsule().stroke(.white.opacity(0.18), lineWidth: 1))
+            )
+            .padding(.top, 8)
+        }
+        .onReceive(replayTimer) { _ in
+            frameIndex = min(frameIndex + 1, frames.count - 1)
+        }
+    }
+}
+
+private enum DebugWeatherReplayFactory {
+    static func makeFrames() -> [AppWeatherSnapshot] {
+        let labels = ["8 AM", "9 AM", "10 AM", "11 AM", "12 PM", "1 PM", "2 PM", "3 PM", "4 PM", "5 PM", "6 PM", "7 PM"]
+        let temperatures = [58, 60, 63, 66, 69, 72, 74, 73, 70, 67, 64, 61]
+        let feelsLike = [56, 59, 62, 66, 69, 71, 73, 72, 69, 66, 63, 60]
+        let conditions: [WeatherCondition] = [.cloudy, .mostlySunny, .sunny, .sunny, .mostlySunny, .cloudy, .rain, .rain, .cloudy, .mostlySunny, .sunny, .clearNight]
+        let descriptions = ["Cloudy", "Mostly Sunny", "Sunny", "Sunny", "Mostly Sunny", "Cloudy", "Light Rain", "Rain", "Cloudy", "Clearing", "Sunny", "Clear"]
+        let rainChances: [Int?] = [nil, nil, nil, 5, 10, 30, 65, 70, 35, 15, nil, nil]
+
+        return labels.indices.map { index in
+            let hourly = (0..<8).map { offset in
+                let sourceIndex = min(index + offset, labels.count - 1)
+                return AppHourlyForecast(
+                    timeLabel: offset == 0 ? "Now" : labels[sourceIndex],
+                    condition: conditions[sourceIndex],
+                    temperature: temperatures[sourceIndex],
+                    feelsLikeTemperature: feelsLike[sourceIndex],
+                    precipitationChance: rainChances[sourceIndex]
+                )
+            }
+
+            return AppWeatherSnapshot(
+                cityName: "New York",
+                currentTemperature: temperatures[index],
+                condition: conditions[index],
+                conditionDescription: descriptions[index],
+                feelsLikeTemperature: feelsLike[index],
+                highTemperature: 74,
+                lowTemperature: 56,
+                hourly: hourly,
+                daily: makeDailyForecast(currentIndex: index),
+                overviewMetrics: [
+                    AppMetric(title: "Air Quality", value: index < 7 ? "32" : "28", detail: "Good"),
+                    AppMetric(title: "UV Index", value: index < 4 ? "3" : index < 8 ? "6" : "2", detail: index < 8 ? "Moderate" : "Low"),
+                    AppMetric(title: "Sunrise", value: "5:27 AM", detail: nil),
+                    AppMetric(title: "Sunset", value: "8:22 PM", detail: nil),
+                ],
+                detailMetrics: [
+                    AppMetric(title: "Humidity", value: "\(humidity(for: index))%", detail: nil),
+                    AppMetric(title: "Dew Point", value: "\(dewPoint(for: index))°", detail: nil),
+                    AppMetric(title: "Wind", value: "\(windSpeed(for: index)) mph", detail: windDirection(for: index)),
+                    AppMetric(title: "Pressure", value: pressure(for: index), detail: index < 6 ? "Steady" : "Falling"),
+                    AppMetric(title: "Visibility", value: index == 7 ? "6 mi" : "10 mi", detail: nil),
+                    AppMetric(title: "Feels Like", value: "\(feelsLike[index])°", detail: nil),
+                ],
+                spotlightTitle: "Replay Window",
+                spotlightValue: "\(labels[index]) yesterday",
+                spotlightSubtitle: spotlightSubtitle(for: index),
+                mood: index < 6 ? .warm : .cool
+            )
+        }
+    }
+
+    private static func makeDailyForecast(currentIndex: Int) -> [AppDailyForecast] {
+        [
+            AppDailyForecast(dayLabel: "Yesterday", condition: currentIndex < 6 ? .mostlySunny : .rain, highTemperature: 74, lowTemperature: 56, precipitationChance: 70),
+            AppDailyForecast(dayLabel: "Today", condition: .cloudy, highTemperature: 69, lowTemperature: 57, precipitationChance: 25),
+            AppDailyForecast(dayLabel: "Fri", condition: .sunny, highTemperature: 76, lowTemperature: 59, precipitationChance: nil),
+            AppDailyForecast(dayLabel: "Sat", condition: .mostlySunny, highTemperature: 79, lowTemperature: 61, precipitationChance: nil),
+            AppDailyForecast(dayLabel: "Sun", condition: .cloudy, highTemperature: 72, lowTemperature: 58, precipitationChance: 20),
+            AppDailyForecast(dayLabel: "Mon", condition: .rain, highTemperature: 68, lowTemperature: 55, precipitationChance: 60),
+            AppDailyForecast(dayLabel: "Tue", condition: .sunny, highTemperature: 75, lowTemperature: 57, precipitationChance: nil),
+        ]
+    }
+
+    private static func humidity(for index: Int) -> Int { [64, 60, 55, 50, 47, 52, 68, 74, 70, 62, 55, 58][index] }
+    private static func dewPoint(for index: Int) -> Int { [46, 47, 48, 49, 50, 53, 58, 59, 57, 54, 50, 49][index] }
+    private static func windSpeed(for index: Int) -> Int { [6, 7, 8, 8, 9, 11, 14, 15, 12, 9, 7, 6][index] }
+    private static func windDirection(for index: Int) -> String { ["NW", "NW", "W", "W", "SW", "S", "SE", "SE", "E", "NE", "N", "NW"][index] }
+    private static func pressure(for index: Int) -> String { ["30.11 in", "30.10 in", "30.08 in", "30.07 in", "30.05 in", "30.01 in", "29.96 in", "29.93 in", "29.97 in", "30.02 in", "30.06 in", "30.08 in"][index] }
+
+    private static func spotlightSubtitle(for index: Int) -> String {
+        if index < 5 {
+            return "Morning warmed steadily with bright breaks and light wind."
+        } else if index < 8 {
+            return "A fast afternoon shower moved through with rising humidity."
+        } else {
+            return "Evening cleared out as temperatures eased back down."
+        }
+    }
+}
+#endif
 
 private struct SkyGlanceLoadingView: View {
     @State private var isAnimating = false

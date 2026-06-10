@@ -83,7 +83,7 @@ struct PaywallView: View {
                                         .font(.system(size: 17, weight: .semibold))
                                 }
                             } else {
-                                Text("Unlock Lifetime \(purchaseManager.displayPrice)")
+                                Text("Continue")
                                     .font(.system(size: 17, weight: .semibold))
                             }
 
@@ -100,12 +100,12 @@ struct PaywallView: View {
                             await purchaseManager.restorePurchases()
                         }
                     } label: {
-                        Text("Restore Purchases")
+                        Text("Refresh Access")
                             .font(.system(size: 15, weight: .medium))
                             .foregroundStyle(.white.opacity(0.78))
                     }
 
-                    Text("One-time purchase. No subscription.")
+                    Text("SkyGlance is unlocked with the paid app purchase.")
                         .font(.system(size: 12, weight: .regular))
                         .foregroundStyle(.white.opacity(0.45))
                 }
@@ -128,15 +128,11 @@ struct PaywallView: View {
     }
 
     private var paywallTitle: String {
-        purchaseManager.isTrialExpired ? "Trial ended" : "Unlock SkyGlance"
+        "SkyGlance is unlocked"
     }
 
     private var paywallSubtitle: String {
-        if purchaseManager.isTrialExpired {
-            return "Your 7-day trial is over. Unlock once to keep using the app and all widgets forever."
-        }
-
-        return "Your 7-day trial includes the app and all widgets. Unlock once to keep SkyGlance forever."
+        "Thanks for supporting SkyGlance. The app and widgets are included with the paid download."
     }
 }
 

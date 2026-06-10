@@ -135,6 +135,7 @@ struct GlanceHomeMediumEntryView: View {
                 isDarkMode: isHomeWidgetDarkMode
             )
         }
+        .widgetURL(WidgetAccessPolicy.interactionURL(kind: GlanceHomeMediumWidget.kind))
     }
 }
 
@@ -175,7 +176,7 @@ struct WidgetLockedView: View {
 
                 Spacer(minLength: 0)
 
-                Text("Trial ended")
+                Text("Open SkyGlance")
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(palette.primaryText)
 
@@ -193,11 +194,11 @@ struct WidgetLockedView: View {
                     .foregroundStyle(palette.primaryText)
 
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Trial ended")
+                    Text("Open SkyGlance")
                         .font(.system(size: 17, weight: .semibold))
                         .foregroundStyle(palette.primaryText)
 
-                    Text("Open SkyGlance to unlock lifetime access.")
+                    Text("Weather updates are available in the app.")
                         .font(.system(size: 13, weight: .medium))
                         .foregroundStyle(palette.secondaryText)
                         .lineLimit(2)
@@ -222,9 +223,9 @@ struct WidgetLockedView: View {
                     .font(.system(size: 14, weight: .semibold))
 
                 VStack(alignment: .leading, spacing: 1) {
-                    Text("Trial ended")
+                    Text("Open app")
                         .font(.system(size: 14, weight: .semibold, design: .rounded))
-                    Text("Open app to unlock")
+                    Text("View weather")
                         .font(.system(size: 12, weight: .medium, design: .rounded))
                 }
             }

@@ -103,6 +103,7 @@ struct GlanceHomeSmallEntryView: View {
                 isDarkMode: isHomeWidgetDarkMode
             )
         }
+        .widgetURL(WidgetAccessPolicy.interactionURL(kind: GlanceHomeSmallWidget.kind))
     }
 }
 

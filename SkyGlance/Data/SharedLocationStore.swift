@@ -19,6 +19,8 @@ struct SharedLocationStore {
     private static let manualLocationEnabledKey = "shared.location.manualEnabled"
     private static let timelineKey = "shared.widget.timeline"
     private static let timelineSavedAtKey = "shared.widget.timelineSavedAt"
+    private static let debugWidgetReplayEntryKey = "debug.widget.replay.entry"
+    private static let debugWidgetReplayActiveUntilKey = "debug.widget.replay.activeUntil"
 
     private struct Snapshot: Codable {
         let latitude: Double
@@ -145,6 +147,41 @@ struct SharedLocationStore {
 
         return loadEntries()
     }
+
+    #if DEBUG
+    static func saveDebugWidgetReplay(entry: GlanceWidgetEntry, activeUntil: Date) {
+        saveDebugWidgetReplay(entries: [entry], activeUntil: activeUntil)
+    }
+
+    static func saveDebugWidgetReplay(entries: [GlanceWidgetEntry], activeUntil: Date) {
+        guard let data = try? JSONEncoder().encode(entries) else { return }
+        Self.defaults.set(data, forKey: debugWidgetReplayEntryKey)
+        Self.defaults.set(activeUntil, forKey: debugWidgetReplayActiveUntilKey)
+    }
+
+    static func loadDebugWidgetReplayEntry(now: Date = Date()) -> GlanceWidgetEntry? {
+        loadDebugWidgetReplayEntries(now: now)?.first
+    }
+
+    static func loadDebugWidgetReplayEntries(now: Date = Date()) -> [GlanceWidgetEntry]? {
+        guard
+            let activeUntil = defaults.object(forKey: debugWidgetReplayActiveUntilKey) as? Date,
+            activeUntil > now,
+            let data = defaults.data(forKey: debugWidgetReplayEntryKey),
+            let entries = try? JSONDecoder().decode([GlanceWidgetEntry].self, from: data),
+            !entries.isEmpty
+        else {
+            return nil
+        }
+
+        return entries
+    }
+
+    static func clearDebugWidgetReplay() {
+        Self.defaults.removeObject(forKey: debugWidgetReplayEntryKey)
+        Self.defaults.removeObject(forKey: debugWidgetReplayActiveUntilKey)
+    }
+    #endif
 }
 
 enum HomeWidgetAppearanceMode: String, CaseIterable, Identifiable {
@@ -183,7 +220,7 @@ enum HomeWidgetAppearanceMode: String, CaseIterable, Identifiable {
             return mode
         }
 
-        return legacyDarkMode ? .dark : .light
+        return legacyDarkMode ? .dark : .automatic
     }
 
     func isDark(for entry: GlanceWidgetEntry) -> Bool {

@@ -53,6 +53,7 @@ struct GlanceLockScreenEntryView: View {
         .foregroundStyle(.white)
         .background(Color.clear)
         .containerBackground(Color.clear, for: .widget)
+        .widgetURL(WidgetAccessPolicy.interactionURL(kind: GlanceLockScreenWidget.kind))
     }
 }
 

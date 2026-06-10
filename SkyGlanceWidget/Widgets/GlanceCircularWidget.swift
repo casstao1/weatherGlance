@@ -41,13 +41,14 @@ struct GlanceCircularEntryView: View {
             } else {
                 WidgetLockedView(style: .accessoryCircular)
                     .accessibilityElement(children: .ignore)
-                    .accessibilityLabel("Trial ended. Open app to unlock.")
+                    .accessibilityLabel("Open SkyGlance.")
             }
         }
         .widgetAccentable()
         .foregroundStyle(.white)
         .background(Color.clear)
         .containerBackground(Color.clear, for: .widget)
+        .widgetURL(WidgetAccessPolicy.interactionURL(kind: GlanceCircularWidget.kind))
     }
 }
 
